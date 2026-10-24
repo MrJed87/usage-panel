@@ -1,0 +1,5 @@
+{
+  "name": "usage-panel-marketplace",
+  "owner": { "name": "MrJed87" },
+  "plugins": [{ "name": "usage-panel", "source": "./" }]
+}
