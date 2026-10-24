@@ -79,7 +79,7 @@ const markers = (reqs: readonly Req[], changes: readonly Change[]) => {
 }
 
 const describe = (c: Change) =>
-  `${c.kind} ${c.from} → ${c.to}, next request ${c.hitAfter === undefined ? 'pending' : c.hitAfter + '% hit'}`
+  `${c.kind} ${c.from} → ${c.to}, first request after: ${c.hitAfter === undefined ? 'n/a' : c.hitAfter + '% hit'}`
 
 export const register: Register = on => {
   let ticker: { cancel: () => void } | undefined
@@ -199,21 +199,17 @@ export const register: Register = on => {
 
         const prev = st.reqs[st.reqs.length - 1]
         const index = st.reqs.length
-        const changes = st.changes.map(c => {
-          if (c.reqIndex === index && c.hitAfter === undefined) {
-            const h = hit(req)
-            toast = `After ${c.kind} change ${c.from} → ${c.to}: ${h}% of the prompt came from cache.`
-
-            return { ...c, hitAfter: h }
-          }
-
-          return c
-        })
+        const changes = [...st.changes]
+        const rate = hit(req)
         if (prev && prev.model !== req.model) {
-          changes.push({ at: endedAt, reqIndex: index, kind: 'model', from: shortModel(prev.model), to: shortModel(req.model) })
+          const c: Change = { at: endedAt, reqIndex: index, kind: 'model', from: shortModel(prev.model), to: shortModel(req.model), hitAfter: rate }
+          changes.push(c)
+          toast = `After ${c.kind} change ${c.from} → ${c.to}: ${rate}% of the prompt came from cache.`
         }
         if (prev && prev.effort !== req.effort) {
-          changes.push({ at: endedAt, reqIndex: index, kind: 'effort', from: prev.effort, to: req.effort })
+          const c: Change = { at: endedAt, reqIndex: index, kind: 'effort', from: prev.effort, to: req.effort, hitAfter: rate }
+          changes.push(c)
+          toast = `After ${c.kind} change ${c.from} → ${c.to}: ${rate}% of the prompt came from cache.`
         }
         const isCaching = req.read + req.create > 0
 
