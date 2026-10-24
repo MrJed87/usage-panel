@@ -7,6 +7,7 @@ A read-only Claude Code mod: a side pane and a one-line band that show your usag
 - **Context:** tokens, window, percent, compaction count.
 - **Requests:** model, effort, request count, time to first token, tokens/sec (output tokens over total request time).
 - **Plan limits and cost:** 5-hour and 7-day usage with reset timers, API-equivalent session cost.
+- **Switch cost:** per model used this session, how long ago, whether its cache is still warm, and about how many tokens a switch back would have to catch up (or a full rewrite if cold).
 - **Subagents:** requests and tokens each (no per-agent cost is available).
 - **Past sessions:** kept across sessions with `$.store`.
 

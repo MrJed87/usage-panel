@@ -47,6 +47,8 @@ const clock = (ms: number) => {
   return `${m}:${String(total % 60).padStart(2, '0')}`
 }
 
+const promptSize = (r: Req) => r.read + r.create + r.input
+
 const span = (ms: number) => {
   const mins = Math.max(0, Math.round(ms / 60000))
   const d = Math.floor(mins / 1440)
@@ -283,8 +285,13 @@ export const register: Register = on => {
     const left = st.cacheExpiresAt === undefined ? undefined : st.cacheExpiresAt - now
     const ttlName = st.ttlMs === ONE_HOUR ? '1h (subscription)' : '5m (API key)'
     const ctx = st.context
-    const others = st.history.filter(p => p.requests > 0).slice(-5).reverse()
+    const past = st.history.filter(p => p.requests > 0).slice(-5).reverse()
     const agents = Object.entries(st.subagents)
+    const lastByModel = new Map<string, Req>()
+    for (const r of st.reqs) {
+      lastByModel.set(r.model, r)
+    }
+    const others = [...lastByModel.values()].filter(r => last !== undefined && r.model !== last.model)
 
     return (
       <Box flexDirection="column">
@@ -367,10 +374,10 @@ export const register: Register = on => {
         )}
 
         <Text bold>{'\n'}Past sessions</Text>
-        {others.length === 0 ? (
+        {past.length === 0 ? (
           <Text dimColor>None saved yet.</Text>
         ) : (
-          others.map(p => (
+          past.map(p => (
             <Box flexDirection="column">
               <Text>
                 {new Date(p.startedAt).toISOString().slice(0, 16).replace('T', ' ')} · {p.requests} req · {p.hitRate}% hit
