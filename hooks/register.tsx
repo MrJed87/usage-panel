@@ -47,6 +47,15 @@ const clock = (ms: number) => {
   return `${m}:${String(total % 60).padStart(2, '0')}`
 }
 
+const span = (ms: number) => {
+  const mins = Math.max(0, Math.round(ms / 60000))
+  const d = Math.floor(mins / 1440)
+  const hr = Math.floor((mins % 1440) / 60)
+  const m = mins % 60
+
+  return d > 0 ? `${d}d ${hr}h` : hr > 0 ? `${hr}h ${m}m` : `${m}m`
+}
+
 const shortModel = (m: string) => m.replace(/^claude-/, '')
 
 const hitColor = (pct: number) => (pct >= 80 ? 'green' : pct >= 40 ? 'yellow' : 'red')
@@ -339,7 +348,7 @@ export const register: Register = on => {
           st.rateLimits.map(r => (
             <Text>
               {r.kind === 'five_hour' ? '5-hour' : r.kind === 'seven_day' ? '7-day' : r.kind} {r.percentUsed}%
-              {r.resetsAt === undefined ? '' : ` · resets in ${clock(Date.parse(r.resetsAt) - now)}`}
+              {r.resetsAt === undefined ? '' : ` · resets in ${span(Date.parse(r.resetsAt) - now)}`}
             </Text>
           ))
         )}
