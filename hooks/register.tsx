@@ -81,7 +81,8 @@ const markers = (reqs: readonly Req[], changes: readonly Change[]) => {
 }
 
 const describe = (c: Change) =>
-  `${c.kind} ${c.from} → ${c.to}, first request after: ${c.hitAfter === undefined ? 'n/a' : c.hitAfter + '% hit'}`
+  `${c.kind} ${c.from} → ${c.to}, first request after: ${c.hitAfter === undefined ? 'n/a' : c.hitAfter + '% hit'}` +
+  (c.predicted === undefined || c.wrote === undefined ? '' : ` · predicted ~${tokens(c.predicted)}, wrote ${tokens(c.wrote)}`)
 
 export const register: Register = on => {
   let ticker: { cancel: () => void } | undefined
@@ -204,7 +205,20 @@ export const register: Register = on => {
         const changes = [...st.changes]
         const rate = hit(req)
         if (prev && prev.model !== req.model) {
-          const c: Change = { at: endedAt, reqIndex: index, kind: 'model', from: shortModel(prev.model), to: shortModel(req.model), hitAfter: rate }
+          const before = promptSize(prev)
+          const known = [...st.reqs].reverse().find(r => r.model === req.model)
+          const isWarm = known !== undefined && known.at > (st.compactedAt ?? 0) && startedAt - known.at < st.ttlMs
+          const predicted = known !== undefined && isWarm ? Math.max(0, before - promptSize(known)) : before
+          const c: Change = {
+            at: endedAt,
+            reqIndex: index,
+            kind: 'model',
+            from: shortModel(prev.model),
+            to: shortModel(req.model),
+            hitAfter: rate,
+            predicted,
+            wrote: req.create + req.input,
+          }
           changes.push(c)
           toast = `After ${c.kind} change ${c.from} → ${c.to}: ${rate}% of the prompt came from cache.`
         }
@@ -244,7 +258,8 @@ export const register: Register = on => {
 
   on('session.compact', async ($, e, next) => {
     if (e.agentId === undefined && e.trigger !== 'precompute') {
-      await update($, s, st => ({ ...st, compactions: st.compactions + 1 }))
+      const at = await $.clock.now()
+      await update($, s, st => ({ ...st, compactions: st.compactions + 1, compactedAt: at }))
     }
 
     return next(e)
@@ -342,6 +357,31 @@ export const register: Register = on => {
             {last.ttftMs === undefined ? '' : ` · TTFT ${(last.ttftMs / 1000).toFixed(1)}s`}
             {last.tps === undefined ? '' : ` · ${last.tps} tok/s`}
           </Text>
+        )}
+
+        <Text bold>{'\n'}Switch cost</Text>
+        {last === undefined || others.length === 0 ? (
+          <Text dimColor>Only one model used this session.</Text>
+        ) : (
+          others.map(r => {
+            const age = now - r.at
+            const isCompacted = st.compactedAt !== undefined && r.at < st.compactedAt
+            const isWarm = age < st.ttlMs && !isCompacted
+            const size = promptSize(last)
+            const gap = Math.max(0, size - promptSize(r))
+
+            return (
+              <Text>
+                {shortModel(r.model)} · used {span(age)} ago ·{' '}
+                {isWarm ? (
+                  <Text color="green">warm, {span(st.ttlMs - age)} left</Text>
+                ) : (
+                  <Text color="red">{isCompacted ? 'cold (compacted since)' : 'cold'}</Text>
+                )}{' '}
+                · {isWarm ? `~${tokens(gap)} to catch up` : `~${tokens(size)} full rewrite`}
+              </Text>
+            )
+          })
         )}
 
         <Text bold>{'\n'}Plan limits</Text>

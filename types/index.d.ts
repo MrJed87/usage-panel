@@ -17,6 +17,8 @@ export type Change = {
   from: string
   to: string
   hitAfter?: number
+  predicted?: number
+  wrote?: number
 }
 
 export type RateLimit = { kind: string; percentUsed: number; resetsAt?: string }
@@ -38,6 +40,7 @@ export type UsageState = {
   rateLimits: RateLimit[]
   costUsd?: number
   compactions: number
+  compactedAt?: number
   cacheExpiresAt?: number
   ttlMs: number
   isBandOn: boolean
