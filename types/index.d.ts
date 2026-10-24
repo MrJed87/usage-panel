@@ -41,6 +41,9 @@ export type UsageState = {
   costUsd?: number
   compactions: number
   compactedAt?: number
+  first?: Req
+  isAutoCompact: boolean
+  autoCompactedFor?: number
   cacheExpiresAt?: number
   ttlMs: number
   isBandOn: boolean

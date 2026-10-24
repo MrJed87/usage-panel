@@ -8,6 +8,8 @@ const BARS = '▁▂▃▄▅▆▇█'
 const SPARK_WIDTH = 40
 const MAX_REQS = 200
 const MAX_HISTORY = 30
+const TWO_MIN = 2 * 60 * 1000
+const MIN_COMPACT_TOKENS = 100000
 const FIVE_MIN = 5 * 60 * 1000
 const ONE_HOUR = 60 * 60 * 1000
 
@@ -20,6 +22,7 @@ const initial: UsageState = {
   compactions: 0,
   ttlMs: FIVE_MIN,
   isBandOn: true,
+  isAutoCompact: false,
   history: [],
 }
 
@@ -101,6 +104,7 @@ export const register: Register = on => {
 
     await $.command.register({ name: 'usage-panel', description: 'Toggle the Usage side pane' })
     await $.command.register({ name: 'usage-band', description: 'Toggle the one-line usage band above the prompt' })
+    await $.command.register({ name: 'usage-autocompact', description: 'Toggle compacting the chat 2 minutes before its cache goes cold' })
     void $.ui.open({ id: PANE, title: 'Usage' })
 
     ticker?.cancel()
@@ -108,6 +112,8 @@ export const register: Register = on => {
       const at = await $.clock.now()
       let isLive = false
       let isCold = false
+      let isDue = false
+      let before = 0
       await update($, s, st => {
         const exp = st.cacheExpiresAt
         if (exp !== undefined) {
@@ -116,10 +122,32 @@ export const register: Register = on => {
             toastedFor = exp
             isCold = true
           }
+          const tokensNow = st.context?.tokens ?? 0
+          if (st.isAutoCompact && st.autoCompactedFor !== exp && at < exp && exp - at <= TWO_MIN && tokensNow >= MIN_COMPACT_TOKENS) {
+            isDue = true
+            before = tokensNow
+
+            return { ...st, autoCompactedFor: exp }
+          }
         }
 
         return st
       })
+      if (isDue) {
+        try {
+          const done = await $.session.compact()
+          if (done.skip !== undefined) {
+            $.ui.toast('Auto-compact skipped: ' + done.skip, { timeoutMs: 8000 })
+          } else {
+            const doneAt = await $.clock.now()
+            await update($, s, st => ({ ...st, compactions: st.compactions + 1, compactedAt: doneAt, cacheExpiresAt: undefined }))
+            const after = done.tokensAfter === undefined ? '' : ` → ${tokens(done.tokensAfter)}`
+            $.ui.toast(`Auto-compacted ${tokens(before)}${after} tokens before the cache went cold.`, { timeoutMs: 10000 })
+          }
+        } catch {
+          // a turn is running: its next request refreshes the cache, so there is nothing to save
+        }
+      }
       if (isCold) {
         $.ui.toast('Prompt cache went cold: the next message re-reads the whole chat at full price.', { timeoutMs: 8000 })
       }
@@ -141,6 +169,21 @@ export const register: Register = on => {
     const opened = await $.ui.open({ id: PANE, title: 'Usage' })
 
     return { text: opened.isPlaced ? 'Usage pane opened.' : 'Usage pane is waiting for room: widen the window.' }
+  })
+
+  on('command.run', { command: 'usage-autocompact' }, async $ => {
+    let isOn = false
+    await update($, s, st => {
+      isOn = !st.isAutoCompact
+
+      return { ...st, isAutoCompact: isOn }
+    })
+
+    return {
+      text: isOn
+        ? `Auto-compact on: the chat is compacted when its cache has 2 minutes left, if it holds ${tokens(MIN_COMPACT_TOKENS)}+ tokens.`
+        : 'Auto-compact off.',
+    }
   })
 
   on('command.run', { command: 'usage-band' }, async $ => {
@@ -233,6 +276,7 @@ export const register: Register = on => {
           ...st,
           reqs: [...st.reqs, req].slice(-MAX_REQS),
           changes: changes.slice(-50),
+          first: st.first ?? req,
           cacheExpiresAt: isCaching ? endedAt + st.ttlMs : st.cacheExpiresAt,
         }
       })
@@ -338,6 +382,16 @@ export const register: Register = on => {
           )}{' '}
           <Text dimColor>[{ttlName}, inferred from your plan]</Text>
         </Text>
+        <Text dimColor>
+          {st.isAutoCompact
+            ? `Auto-compact on: at 2:00 left, if context ≥ ${tokens(MIN_COMPACT_TOKENS)}`
+            : 'Auto-compact off (/usage-autocompact)'}
+        </Text>
+        {st.first === undefined ? null : (
+          <Text dimColor>
+            {`First request: read ${tokens(st.first.read)} · wrote ${tokens(st.first.create)} (${hit(st.first)}% hit)`}
+          </Text>
+        )}
 
         <Text bold>{'\n'}Context</Text>
         {ctx === undefined || ctx.tokens === undefined ? (

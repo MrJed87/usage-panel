@@ -60,6 +60,8 @@ test('pane and band draw with data on every surface', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const pane = await $.ui.mount({ ...PANE, surface })
     expect(await pane.find({ type: 'Text', text: /Cache/ })).toBeTruthy()
+    expect(await pane.find({ type: 'Text', text: /Auto-compact off/ })).toBeTruthy()
+    expect(await pane.find({ type: 'Text', text: /First request: read/ })).toBeTruthy()
     expect(await pane.find({ type: 'Text', text: /to catch up/ })).toBeTruthy()
     await pane.unmount()
     const band = await $.ui.mount({ ...BAND, surface })
