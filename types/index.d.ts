@@ -43,6 +43,7 @@ export type UsageState = {
   compactedAt?: number
   first?: Req
   isAutoCompact: boolean
+  leadMs: number
   autoCompactedFor?: number
   cacheExpiresAt?: number
   ttlMs: number

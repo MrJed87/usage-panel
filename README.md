@@ -12,7 +12,7 @@ A read-only Claude Code mod: a side pane and a one-line band that show your usag
 - **Subagents:** requests and tokens each (no per-agent cost is available).
 - **Past sessions:** kept across sessions with `$.store`.
 
-Commands: `/usage-panel` toggles the pane, `/usage-band` toggles the band above the prompt, `/usage-autocompact` toggles auto-compact.
+Commands: `/usage-panel` toggles the pane, `/usage-band` toggles the band above the prompt, `/usage-autocompact` toggles auto-compact (`/usage-autocompact 5` turns it on with a 5-minute lead, for testing).
 
 **Auto-compact (off by default):** when on, and the cache has 2 minutes left and the context holds 100k+ tokens, the mod compacts the chat while the cache is still warm, so coming back after the cache goes cold only rewrites the summary. This changes your conversation (a summary replaces detail) and spends a little usage on the summary request, so it is opt-in. If you come back in the last two minutes, it will have compacted for nothing.
 

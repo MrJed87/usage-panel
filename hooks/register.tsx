@@ -23,6 +23,7 @@ const initial: UsageState = {
   ttlMs: FIVE_MIN,
   isBandOn: true,
   isAutoCompact: false,
+  leadMs: TWO_MIN,
   history: [],
 }
 
@@ -113,6 +114,7 @@ export const register: Register = on => {
       let isLive = false
       let isCold = false
       let isDue = false
+      let isMissed = false
       let before = 0
       await update($, s, st => {
         const exp = st.cacheExpiresAt
@@ -121,9 +123,10 @@ export const register: Register = on => {
           if (at >= exp && toastedFor !== exp) {
             toastedFor = exp
             isCold = true
+            isMissed = st.isAutoCompact && st.autoCompactedFor !== exp
           }
           const tokensNow = st.context?.tokens ?? 0
-          if (st.isAutoCompact && st.autoCompactedFor !== exp && at < exp && exp - at <= TWO_MIN && tokensNow >= MIN_COMPACT_TOKENS) {
+          if (st.isAutoCompact && st.autoCompactedFor !== exp && at < exp && exp - at <= st.leadMs && tokensNow >= MIN_COMPACT_TOKENS) {
             isDue = true
             before = tokensNow
 
@@ -149,7 +152,12 @@ export const register: Register = on => {
         }
       }
       if (isCold) {
-        $.ui.toast('Prompt cache went cold: the next message re-reads the whole chat at full price.', { timeoutMs: 8000 })
+        $.ui.toast(
+          isMissed
+            ? 'Prompt cache went cold before auto-compact could run (asleep, below the size threshold, or a turn was running). Compacting now would cost a full re-read, so it was skipped.'
+            : 'Prompt cache went cold: the next message re-reads the whole chat at full price.',
+          { timeoutMs: 10000 },
+        )
       }
       if (isLive) {
         $.ui.invalidate('ui.render')
@@ -171,17 +179,22 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? 'Usage pane opened.' : 'Usage pane is waiting for room: widen the window.' }
   })
 
-  on('command.run', { command: 'usage-autocompact' }, async $ => {
+  on('command.run', { command: 'usage-autocompact' }, async ($, e) => {
+    const minutes = Number.parseInt(e.args.trim(), 10)
+    const hasLead = Number.isFinite(minutes) && minutes >= 1 && minutes <= 59
     let isOn = false
+    let lead = TWO_MIN
     await update($, s, st => {
-      isOn = !st.isAutoCompact
+      isOn = hasLead ? true : !st.isAutoCompact
+      lead = hasLead ? minutes * 60 * 1000 : st.leadMs
+      const next = { ...st, isAutoCompact: isOn, leadMs: lead }
 
-      return { ...st, isAutoCompact: isOn }
+      return hasLead ? { ...next, autoCompactedFor: undefined } : next
     })
 
     return {
       text: isOn
-        ? `Auto-compact on: the chat is compacted when its cache has 2 minutes left, if it holds ${tokens(MIN_COMPACT_TOKENS)}+ tokens.`
+        ? `Auto-compact on: the chat is compacted when its cache has ${span(lead)} left, if it holds ${tokens(MIN_COMPACT_TOKENS)}+ tokens. (/usage-autocompact 1-59 sets the minutes; the default is 2.)`
         : 'Auto-compact off.',
     }
   })
@@ -384,7 +397,12 @@ export const register: Register = on => {
         </Text>
         <Text dimColor>
           {st.isAutoCompact
-            ? `Auto-compact on: at 2:00 left, if context ≥ ${tokens(MIN_COMPACT_TOKENS)}`
+            ? `Auto-compact on: at ${span(st.leadMs)} left, if context ≥ ${tokens(MIN_COMPACT_TOKENS)}` +
+              (left !== undefined && left > st.leadMs && st.autoCompactedFor !== st.cacheExpiresAt
+                ? ` · fires in ${span(left - st.leadMs)}`
+                : st.autoCompactedFor !== undefined && st.autoCompactedFor === st.cacheExpiresAt
+                  ? ' · ran for this cache window'
+                  : '')
             : 'Auto-compact off (/usage-autocompact)'}
         </Text>
         {st.first === undefined ? null : (
