@@ -1,6 +1,6 @@
 {
   "name": "usage-panel",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Side pane and band for usage: cache hit rate with effort/model change markers, TTL countdown, switch cost per model, context, plan limits, cost and subagents. Optional auto-compact before the cache goes cold (off by default).",
   "types": "./types/index.d.ts",
   "author": {

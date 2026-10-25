@@ -126,11 +126,11 @@ export const register: Register = on => {
             isMissed = st.isAutoCompact && st.autoCompactedFor !== exp
           }
           const tokensNow = st.context?.tokens ?? 0
-          if (st.isAutoCompact && st.autoCompactedFor !== exp && at < exp && exp - at <= st.leadMs && tokensNow >= MIN_COMPACT_TOKENS) {
+          if (st.isAutoCompact && st.autoCompactedFor !== exp && at >= (st.autoRetryAt ?? 0) && at < exp && exp - at <= st.leadMs && tokensNow >= MIN_COMPACT_TOKENS) {
             isDue = true
             before = tokensNow
 
-            return { ...st, autoCompactedFor: exp }
+            return { ...st, autoRetryAt: at + 120000, autoNote: 'Auto-compact running…' }
           }
         }
 
@@ -140,15 +140,26 @@ export const register: Register = on => {
         try {
           const done = await $.session.compact()
           if (done.skip !== undefined) {
-            $.ui.toast('Auto-compact skipped: ' + done.skip, { timeoutMs: 8000 })
+            const note = 'Auto-compact skipped: ' + done.skip
+            await update($, s, st => ({ ...st, autoCompactedFor: st.cacheExpiresAt, autoNote: note }))
+            $.ui.toast(note, { timeoutMs: 10000 })
           } else {
             const doneAt = await $.clock.now()
-            await update($, s, st => ({ ...st, compactions: st.compactions + 1, compactedAt: doneAt, cacheExpiresAt: undefined }))
             const after = done.tokensAfter === undefined ? '' : ` → ${tokens(done.tokensAfter)}`
-            $.ui.toast(`Auto-compacted ${tokens(before)}${after} tokens before the cache went cold.`, { timeoutMs: 10000 })
+            const note = `Auto-compacted ${tokens(before)}${after} tokens before the cache went cold.`
+            await update($, s, st => ({
+              ...st,
+              compactions: st.compactions + 1,
+              compactedAt: doneAt,
+              cacheExpiresAt: undefined,
+              autoNote: note,
+            }))
+            $.ui.toast(note, { timeoutMs: 10000 })
           }
-        } catch {
-          // a turn is running: its next request refreshes the cache, so there is nothing to save
+        } catch (error) {
+          const note = 'Auto-compact failed, will retry in 2 min: ' + (error instanceof Error ? error.message : String(error))
+          await update($, s, st => ({ ...st, autoNote: note }))
+          $.ui.toast(note, { timeoutMs: 10000 })
         }
       }
       if (isCold) {
@@ -398,13 +409,10 @@ export const register: Register = on => {
         <Text dimColor>
           {st.isAutoCompact
             ? `Auto-compact on: at ${span(st.leadMs)} left, if context ≥ ${tokens(MIN_COMPACT_TOKENS)}` +
-              (left !== undefined && left > st.leadMs && st.autoCompactedFor !== st.cacheExpiresAt
-                ? ` · fires in ${span(left - st.leadMs)}`
-                : st.autoCompactedFor !== undefined && st.autoCompactedFor === st.cacheExpiresAt
-                  ? ' · ran for this cache window'
-                  : '')
+              (left !== undefined && left > st.leadMs ? ` · fires in ${span(left - st.leadMs)}` : '')
             : 'Auto-compact off (/usage-autocompact)'}
         </Text>
+        {st.autoNote === undefined ? null : <Text color="yellow">{st.autoNote}</Text>}
         {st.first === undefined ? null : (
           <Text dimColor>
             {`First request: read ${tokens(st.first.read)} · wrote ${tokens(st.first.create)} (${hit(st.first)}% hit)`}

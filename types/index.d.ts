@@ -45,6 +45,8 @@ export type UsageState = {
   isAutoCompact: boolean
   leadMs: number
   autoCompactedFor?: number
+  autoRetryAt?: number
+  autoNote?: string
   cacheExpiresAt?: number
   ttlMs: number
   isBandOn: boolean
