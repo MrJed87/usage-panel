@@ -16,7 +16,7 @@ Commands: `/usage-panel` toggles the pane, `/usage-band` toggles the band above 
 
 **Auto-compact (off by default):** when on, and the cache has 2 minutes left and the context holds 100k+ tokens, the mod compacts the chat while the cache is still warm, so coming back after the cache goes cold only rewrites the summary. This changes your conversation (a summary replaces detail) and spends a little usage on the summary request, so it is opt-in. If you come back in the last two minutes, it will have compacted for nothing.
 
-It makes no model calls of its own, starts no processes, uses no network, and never holds, changes or approves a tool call. The only thing it does to your session is the optional auto-compact above (`$.session.compact`). It observes `session.compact` to count compactions.
+It makes no model calls of its own, starts no processes, uses no network, and never holds, changes or approves a tool call. The only thing it does to your session is the optional auto-compact above (`$.session.compact`, or `/compact` submitted for you where compaction only runs inside a turn, as in the desktop app). It observes `session.compact` to count compactions.
 
 ## Install
 

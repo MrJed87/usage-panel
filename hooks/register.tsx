@@ -116,6 +116,7 @@ export const register: Register = on => {
       let isDue = false
       let isMissed = false
       let before = 0
+      let st0Lead = 0
       await update($, s, st => {
         const exp = st.cacheExpiresAt
         if (exp !== undefined) {
@@ -129,6 +130,7 @@ export const register: Register = on => {
           if (st.isAutoCompact && st.autoCompactedFor !== exp && at >= (st.autoRetryAt ?? 0) && at < exp && exp - at <= st.leadMs && tokensNow >= MIN_COMPACT_TOKENS) {
             isDue = true
             before = tokensNow
+            st0Lead = exp - at
 
             return { ...st, autoRetryAt: at + 120000, autoNote: 'Auto-compact running…' }
           }
@@ -157,8 +159,27 @@ export const register: Register = on => {
             $.ui.toast(note, { timeoutMs: 10000 })
           }
         } catch (error) {
-          const note = 'Auto-compact failed, will retry in 2 min: ' + (error instanceof Error ? error.message : String(error))
-          await update($, s, st => ({ ...st, autoNote: note }))
+          const reason = error instanceof Error ? error.message : String(error)
+          let how = ''
+          if (/headless|not available/i.test(reason)) {
+            // the desktop app and the SDK compact inside a turn, so ask for it the way a person would: /compact
+            try {
+              await $.command.run({ command: 'compact' })
+              how = 'ran /compact as a command'
+            } catch {
+              try {
+                await $.prompt.submit({ text: '/compact', asUser: true })
+                how = 'submitted /compact as a prompt'
+              } catch {
+                how = ''
+              }
+            }
+          }
+          const note =
+            how === ''
+              ? 'Auto-compact failed, will retry in 2 min: ' + reason
+              : `Auto-compact ${how} (${tokens(before)} tokens, cache had ${span(st0Lead)} left).`
+          await update($, s, st => ({ ...st, autoNote: note, autoCompactedFor: how === '' ? st.autoCompactedFor : st.cacheExpiresAt }))
           $.ui.toast(note, { timeoutMs: 10000 })
         }
       }
@@ -327,7 +348,7 @@ export const register: Register = on => {
   on('session.compact', async ($, e, next) => {
     if (e.agentId === undefined && e.trigger !== 'precompute') {
       const at = await $.clock.now()
-      await update($, s, st => ({ ...st, compactions: st.compactions + 1, compactedAt: at }))
+      await update($, s, st => ({ ...st, compactions: st.compactions + 1, compactedAt: at, cacheExpiresAt: undefined }))
     }
 
     return next(e)
